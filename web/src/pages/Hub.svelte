@@ -33,7 +33,7 @@
     </a>
     <a class="item" href={href('daten/quellen')} style="--c:#a78bfa">
       <span class="ic"><Icon name="sources" size={22} /></span>
-      <span class="grow"><b>Datenquellen &amp; App</b><span class="muted small">Sendestatus, HC-Bridge-App herunterladen</span></span>
+      <span class="grow"><b>Datenquellen &amp; Apps</b><span class="muted small">Sendestatus, Android-Apps herunterladen</span></span>
       <Icon name="chevron" size={18} />
     </a>
   {/if}

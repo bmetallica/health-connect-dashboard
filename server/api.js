@@ -16,6 +16,16 @@ const { buildReport } = require('./report');
 
 const DATA_DIR = process.env.DATA_DIR || '/data';
 const APK_FILE = path.join(DATA_DIR, 'app', 'hc-bridge.apk');
+const PH_APK_FILE = path.join(DATA_DIR, 'app', 'ph-app.apk');
+
+function apkInfo(file) {
+  try {
+    const st = fs.statSync(file);
+    return { size: st.size, mtime: st.mtimeMs };
+  } catch {
+    return null; // app not built
+  }
+}
 const router = express.Router();
 
 // edit configuration per sample type: label, unit, plausibility range (warning only)
@@ -71,13 +81,6 @@ function parseNum(v) {
 router.get('/meta', wrap(async (req, res) => {
   const [range, types, profile, sources] = await Promise.all([D.dataRange(), D.availableTypes(), settings.getProfile(), settings.getSourceSettings()]);
   const unknown = await db.query('SELECT record_type, COUNT(*) AS n FROM unknown_records GROUP BY record_type');
-  let apk = null;
-  try {
-    const st = fs.statSync(APK_FILE);
-    apk = { size: st.size, mtime: st.mtimeMs };
-  } catch {
-    // no app built
-  }
   res.json({
     tz: T.TZ,
     today: T.today(),
@@ -90,7 +93,8 @@ router.get('/meta', wrap(async (req, res) => {
     unknownTypes: unknown.map((r) => ({ type: r.record_type, count: Number(r.n) })),
     kinds: KINDS,
     dayKinds: DAY_KINDS,
-    apk,
+    apk: apkInfo(APK_FILE),
+    apkPh: apkInfo(PH_APK_FILE),
   });
 }));
 
@@ -687,6 +691,11 @@ router.get('/report.pdf', wrap(async (req, res) => {
 router.get('/app/download', (req, res) => {
   if (!fs.existsSync(APK_FILE)) return res.status(404).json({ error: 'App wurde noch nicht gebaut' });
   res.download(APK_FILE, 'hc-bridge.apk');
+});
+
+router.get('/app/ph/download', (req, res) => {
+  if (!fs.existsSync(PH_APK_FILE)) return res.status(404).json({ error: 'App wurde noch nicht gebaut' });
+  res.download(PH_APK_FILE, 'ph-app.apk');
 });
 
 module.exports = { router, csvHandler };

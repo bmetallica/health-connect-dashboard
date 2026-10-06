@@ -9,6 +9,8 @@ Uhr / Band ──► Hersteller-App ──► (z. B. Health Sync) ──► Goog
                                                                 │
                                    Tasker  ◄────────────────────┤
                                    oder HC Bridge (eigene App) ◄┘
+                                                                │
+                         pH-Teststreifen ──► pH-Wert (eigene App)│
                                                                 │  HTTP POST (JSON)
                                                                 ▼
                          ┌────────────── Docker ──────────────────────────┐
@@ -133,12 +135,35 @@ keyPassword=...
 
 Sichere den Ordner `android/keystore/` gut. Ohne ihn lassen sich keine Updates über die installierte App installieren. Erhöhe vor jedem Update `versionCode` in `android/app/build.gradle.kts`.
 
+## pH-Wert (Android-App, optional)
+
+Unter `android-ph/` liegt eine zweite App zur manuellen Erfassung von pH-Werten aus Teststreifen. Sie ist im selben Dark-Mode-Design gestaltet wie das Webinterface.
+
+- **Großer Button „Messung erfassen“** ganz oben, die Eingabe öffnet sich als Bottom-Sheet.
+- **Eigene Zifferntastatur ohne Komma-Fehler:** Es gibt genau eine Komma-Taste und höchstens zwei Nachkommastellen. Ein vergessenes Komma wird ergänzt, weil es keinen pH über 14 gibt: `68` wird zu 6,8, `675` zu 6,75. Dazu Feinjustierung mit ±0,1 sowie frei wählbares Datum und frei wählbare Uhrzeit für Nachträge.
+- **Werte bleiben auch auf dem Handy**, mit Verlauf (Zielbereich, Punkte nach Status eingefärbt), Werteverteilung, Kennzahlen und Messliste. Werte lassen sich bearbeiten und löschen.
+- **Offline-fähig:** Neue Werte werden im Hintergrund gesendet, sobald der Server erreichbar ist (WorkManager).
+- **Eigenes Setup-Menü:** Server-Adresse und Ports mit Verbindungstest, Zielbereich (auch aus dem Webinterface übernehmbar), Import aller bisherigen Messungen vom Server.
+
+Gesendet wird im oben beschriebenen pH-Format mit `X-Source: ph-app`. Voraussetzung: Android 8 oder neuer.
+
+```bash
+./android-ph/build.sh      # legt data/app/ph-app.apk ab, Download unter Daten → Datenquellen
+```
+
+Die App nutzt denselben Schlüssel wie die HC Bridge (`android/keystore/`).
+
+## Fertige APKs
+
+Fertig gebaute APKs beider Apps liegen unter [Releases](../../releases). Sie sind mit dem Schlüssel des Projekts signiert. Wer selbst baut, signiert mit dem eigenen Schlüssel. Dann lässt sich eine App aus den Releases nicht per Update ersetzen, sie muss vorher deinstalliert werden.
+
 ## Aufbau
 
 ```
 server/          Node.js (Express) – Ingest, REST-API, Tageswerte, CSV, PDF, Analyse
 web/             Svelte 5 + Vite + ECharts – Webinterface (PWA)
 android/         HC Bridge – Kotlin, Jetpack Compose, Health Connect
+android-ph/      pH-Wert – Kotlin, Jetpack Compose, Erfassung und Verlauf
 Dockerfile       baut Frontend und Server in ein Image
 docker-compose.yml  App + MariaDB 11.4
 ```

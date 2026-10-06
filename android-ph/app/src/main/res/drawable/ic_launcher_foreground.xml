@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- drop with a test-strip scale -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="512" android:viewportHeight="512">
+    <group android:scaleX="0.6" android:scaleY="0.6" android:pivotX="256" android:pivotY="256">
+        <path android:fillColor="#FFFACC15"
+            android:pathData="M256,56C256,56 112,224 112,320c0,80 64,144 144,144s144,-64 144,-144C400,224 256,56 256,56z" />
+        <path android:fillColor="#FF0B1020" android:pathData="M196,300h120a14,14 0,0 1,0 28h-120a14,14 0,0 1,0 -28z" />
+        <path android:fillColor="#FF0B1020" android:pathData="M216,352h80a14,14 0,0 1,0 28h-80a14,14 0,0 1,0 -28z" />
+        <path android:fillColor="#FF0B1020" android:pathData="M226,248h60a14,14 0,0 1,0 28h-60a14,14 0,0 1,0 -28z" />
+    </group>
+</vector>
