@@ -1,0 +1,11 @@
+# Build environment for the HC Bridge app (JDK 17, Android SDK, Gradle)
+FROM eclipse-temurin:17-jdk
+RUN apt-get update && apt-get install -y --no-install-recommends unzip wget && rm -rf /var/lib/apt/lists/*
+ENV ANDROID_HOME=/opt/android-sdk GRADLE_HOME=/opt/gradle
+RUN mkdir -p $ANDROID_HOME/cmdline-tools && cd /tmp \
+ && wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O tools.zip \
+ && unzip -q tools.zip && mv cmdline-tools $ANDROID_HOME/cmdline-tools/latest && rm tools.zip
+ENV PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$GRADLE_HOME/bin
+RUN yes | sdkmanager --licenses >/dev/null && sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" >/dev/null
+RUN cd /tmp && wget -q https://services.gradle.org/distributions/gradle-8.11.1-bin.zip -O g.zip && unzip -q g.zip && mv gradle-8.11.1 $GRADLE_HOME && rm g.zip
+WORKDIR /src

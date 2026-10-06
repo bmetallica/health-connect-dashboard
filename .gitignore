@@ -1,0 +1,19 @@
+# persönliche Daten und Zugangsdaten
+.env
+data/
+plan.md
+
+# Abhängigkeiten und Build-Ergebnisse
+node_modules/
+web/dist/
+
+# Android
+android/keystore/
+android/local.properties
+android/.gradle/
+android/.kotlin/
+android/app/build/
+android/build/
+*.apk
+*.jks
+*.keystore
