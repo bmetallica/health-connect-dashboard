@@ -81,15 +81,31 @@ class Store(ctx: Context) : SQLiteOpenHelper(ctx.applicationContext, "ph.db", nu
 class Prefs(ctx: Context) {
     private val p = ctx.applicationContext.getSharedPreferences("ph", Context.MODE_PRIVATE)
 
-    var host: String
-        get() = p.getString("host", "") ?: ""
-        set(v) = p.edit().putString("host", v.trim()).apply()
-    var ingestPort: Int
-        get() = p.getInt("ingestPort", 8321)
-        set(v) = p.edit().putInt("ingestPort", v).apply()
-    var webPort: Int
-        get() = p.getInt("webPort", 8322)
-        set(v) = p.edit().putInt("webPort", v).apply()
+    init {
+        // version 1.0 stored host + ports; turn them into the two addresses
+        val oldHost = p.getString("host", null)
+        if (!oldHost.isNullOrBlank() && !p.contains("ingestUrl")) {
+            val h = oldHost.substringAfter("://").substringBefore('/').substringBefore(':')
+            p.edit()
+                .putString("ingestUrl", "http://$h:${p.getInt("ingestPort", 8321)}/ingest")
+                .putString("webUrl", "http://$h:${p.getInt("webPort", 8322)}")
+                .remove("host").remove("ingestPort").remove("webPort")
+                .apply()
+        }
+    }
+
+    /** where measurements are sent, e.g. https://health.example.de/ingest (reverse proxy) */
+    var ingestUrl: String
+        get() = p.getString("ingestUrl", "") ?: ""
+        set(v) = p.edit().putString("ingestUrl", v.trim()).apply()
+    /** optional token, sent as X-Ingest-Token */
+    var token: String
+        get() = p.getString("token", "") ?: ""
+        set(v) = p.edit().putString("token", v.trim()).apply()
+    /** web interface in the home network, e.g. http://192.168.1.10:8322 */
+    var webUrl: String
+        get() = p.getString("webUrl", "") ?: ""
+        set(v) = p.edit().putString("webUrl", v.trim()).apply()
     var targetMin: Double
         get() = p.getFloat("tMin", 7.0f).toDouble()
         set(v) = p.edit().putFloat("tMin", v.toFloat()).apply()
@@ -106,18 +122,12 @@ class Prefs(ctx: Context) {
         get() = p.getInt("range", 1)
         set(v) = p.edit().putInt("range", v).apply()
 
-    val configured get() = host.isNotBlank()
+    val configured get() = ingestUrl.isNotBlank()
+    val webConfigured get() = webUrl.isNotBlank()
 
-    private fun base(port: Int): String {
-        var h = host.trim().trimEnd('/')
-        if (!h.startsWith("http://") && !h.startsWith("https://")) h = "http://$h"
-        // the ports come from their own fields, a port typed into the address is dropped
-        val scheme = h.substringBefore("://")
-        val hostPart = h.substringAfter("://").substringBefore('/').substringBefore(':')
-        return "$scheme://$hostPart:$port"
-    }
+    /** without a scheme: https for the ingest address (reverse proxy), http in the home network */
+    val ingest get() = withScheme(ingestUrl, "https")
+    val web get() = withScheme(webUrl, "http").trimEnd('/')
 
-    val ingestUrl get() = base(ingestPort) + "/ingest"
-    val ingestHealthUrl get() = base(ingestPort) + "/health"
-    val webUrl get() = base(webPort)
+    private fun withScheme(u: String, def: String) = if (u.contains("://")) u.trim() else "$def://${u.trim()}"
 }

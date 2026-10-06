@@ -12,6 +12,10 @@ class Prefs(ctx: Context) {
     var serverUrl: String
         get() = p.getString("serverUrl", "") ?: ""
         set(v) = p.edit().putString("serverUrl", v.trim()).apply()
+    /** optional token of the ingest port, sent as X-Ingest-Token */
+    var ingestToken: String
+        get() = p.getString("ingestToken", "") ?: ""
+        set(v) = p.edit().putString("ingestToken", v.trim()).apply()
     var intervalMin: Int
         get() = p.getInt("intervalMin", 15)
         set(v) = p.edit().putInt("intervalMin", v).apply()

@@ -20,13 +20,17 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 
-/** HTTP calls to the health server (ingest on 8321, web API on 8322). */
+/**
+ * HTTP calls to the health server: measurements go to the ingest address (may
+ * be public via reverse proxy), everything else to the web interface, which is
+ * only reachable in the home network.
+ */
 object Server {
     private const val SOURCE = "ph-app"
 
     private class Resp(val code: Int, val body: String)
 
-    private fun call(url: String, method: String = "GET", json: String? = null): Resp {
+    private fun call(url: String, method: String = "GET", json: String? = null, token: String = ""): Resp {
         val c = URL(url).openConnection() as HttpURLConnection
         try {
             c.requestMethod = method
@@ -37,6 +41,7 @@ object Server {
                 c.doOutput = true
                 c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 c.setRequestProperty("X-Source", SOURCE)
+                if (token.isNotEmpty()) c.setRequestProperty("X-Ingest-Token", token)
                 c.outputStream.use { it.write(json.toByteArray(Charsets.UTF_8)) }
             }
             val code = c.responseCode
@@ -65,7 +70,8 @@ object Server {
         if (!prefs.configured) return@withContext "Server nicht eingerichtet"
         try {
             for (m in store.unsynced()) {
-                val r = call(prefs.ingestUrl, "POST", payload(m))
+                val r = call(prefs.ingest, "POST", payload(m), prefs.token)
+                if (r.code == 401) throw RuntimeException("Token fehlt oder ist falsch")
                 if (r.code !in 200..299) throw RuntimeException("Server antwortet mit ${r.code}")
                 store.markSynced(m.id, m.value)
             }
@@ -78,21 +84,35 @@ object Server {
         }
     }
 
-    data class Check(val ingest: String?, val web: String?) // null = ok, else error text
+    private fun err(e: Exception) = e.message ?: e.javaClass.simpleName
 
-    suspend fun test(prefs: Prefs): Check = withContext(Dispatchers.IO) {
-        fun probe(url: String) = try {
-            val r = call(url)
-            if (r.code in 200..299) null else "HTTP ${r.code}"
+    /** ingest test: an empty payload is accepted by the server but not stored */
+    suspend fun testIngest(prefs: Prefs): String? = withContext(Dispatchers.IO) {
+        try {
+            val r = call(prefs.ingest, "POST", "[]", prefs.token)
+            when (r.code) {
+                in 200..299 -> null
+                401 -> "Token fehlt oder ist falsch"
+                404 -> "Adresse falsch (HTTP 404) – endet sie auf /ingest?"
+                else -> "HTTP ${r.code}"
+            }
         } catch (e: Exception) {
-            e.message ?: e.javaClass.simpleName
+            err(e)
         }
-        Check(probe(prefs.ingestHealthUrl), probe(prefs.webUrl + "/health"))
+    }
+
+    suspend fun testWeb(prefs: Prefs): String? = withContext(Dispatchers.IO) {
+        try {
+            val r = call(prefs.web + "/health")
+            if (r.code in 200..299 && r.body.contains("\"ok\"")) null else "HTTP ${r.code}"
+        } catch (e: Exception) {
+            err(e)
+        }
     }
 
     /** target range from the profile in the web interface */
     suspend fun fetchTarget(prefs: Prefs): Pair<Double, Double>? = withContext(Dispatchers.IO) {
-        val r = call(prefs.webUrl + "/api/v2/profile")
+        val r = call(prefs.web + "/api/v2/profile")
         if (r.code !in 200..299) throw RuntimeException("HTTP ${r.code}")
         val p = JSONObject(r.body).optJSONObject("profile") ?: return@withContext null
         if (!p.has("phTargetMin") || !p.has("phTargetMax") || p.isNull("phTargetMin") || p.isNull("phTargetMax")) return@withContext null
@@ -103,7 +123,7 @@ object Server {
         val out = ArrayList<JSONObject>()
         var page = 1
         while (true) {
-            val r = call(prefs.webUrl + "/api/v2/edit/samples/ph?from=$from&to=$to&size=500&page=$page")
+            val r = call(prefs.web + "/api/v2/edit/samples/ph?from=$from&to=$to&size=500&page=$page")
             if (r.code !in 200..299) throw RuntimeException("HTTP ${r.code}")
             val o = JSONObject(r.body)
             val items = o.getJSONArray("items")
@@ -126,12 +146,12 @@ object Server {
 
     /** deletes the value at this time on the server too (it stays restorable there) */
     suspend fun deleteRemote(prefs: Prefs, time: Long): Boolean = withContext(Dispatchers.IO) {
-        if (!prefs.configured) return@withContext false
+        if (!prefs.webConfigured) return@withContext false
         val day = Instant.ofEpochMilli(time).atZone(ZoneId.systemDefault()).toLocalDate()
         val hit = serverItems(prefs, day.minusDays(1).toString(), day.plusDays(1).toString())
             .firstOrNull { it.optLong("rawTime") == time || it.optLong("time") == time } ?: return@withContext false
         if (hit.optBoolean("deleted")) return@withContext true
-        call(prefs.webUrl + "/api/v2/edit/samples/" + hit.getLong("id"), "DELETE").code in 200..299
+        call(prefs.web + "/api/v2/edit/samples/" + hit.getLong("id"), "DELETE").code in 200..299
     }
 }
 

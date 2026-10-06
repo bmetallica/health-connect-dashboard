@@ -38,11 +38,13 @@ class Outbox(private val ctx: Context, private val prefs: Prefs) {
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("Content-Encoding", "gzip")
                 setRequestProperty("X-Source", "hc-bridge")
+                if (prefs.ingestToken.isNotEmpty()) setRequestProperty("X-Ingest-Token", prefs.ingestToken)
                 setFixedLengthStreamingMode(f.length())
             }
             try {
                 conn.outputStream.use { out -> f.inputStream().use { it.copyTo(out) } }
                 val code = conn.responseCode
+                if (code == 401) throw IllegalStateException("Token fehlt oder ist falsch")
                 if (code !in 200..299) throw IllegalStateException("Server antwortet mit HTTP $code")
                 sent += f.name.substringAfterLast('-').removeSuffix(".json.gz").toIntOrNull() ?: 0
                 f.delete()

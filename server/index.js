@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -17,26 +18,51 @@ const log = (...a) => console.log(new Date().toISOString().slice(0, 19), ...a);
 let ready = false;
 
 // ---------- ingest server (port 8321): accepts everything that arrives ----------
+// This port is meant to be published to the internet (reverse proxy with HTTPS).
+// It only takes data in: no GET routes, no details in responses, no framework
+// error pages. Everything else stays on the web port, which is LAN only.
+const INGEST_TOKEN = (process.env.INGEST_TOKEN || '').trim();
+const INGEST_PATHS = ['/ingest', '/api/ingest', '/data', '/'];
+
+function tokenOk(req) {
+  if (!INGEST_TOKEN) return true;
+  const auth = req.get('authorization') || '';
+  const given = req.get('x-ingest-token') || (auth.startsWith('Bearer ') ? auth.slice(7) : '') || String(req.query.token || '');
+  const a = crypto.createHash('sha256').update(given).digest();
+  const b = crypto.createHash('sha256').update(INGEST_TOKEN).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
 const api = express();
-api.use(express.json({ limit: '50mb', type: ['application/json', 'application/*+json', 'text/json'] }));
+api.disable('x-powered-by');
+api.disable('etag');
+api.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  if (req.method !== 'POST' || !INGEST_PATHS.includes(req.path)) return res.status(404).end();
+  if (!tokenOk(req)) return res.status(401).json({ ok: false });
+  next();
+});
+// any content type is parsed as JSON (some senders do not set it correctly)
+api.use(express.json({ limit: '50mb', type: () => true }));
+
+const isEmpty = (b) => b == null || (Array.isArray(b) ? b.length === 0 : typeof b === 'object' && Object.keys(b).length === 0);
 
 function handleIngest(req, res) {
-  if (req.body === undefined) {
-    return res.status(400).json({ error: 'No JSON body received. Please send with Content-Type: application/json.' });
-  }
+  // empty payload = connection test of the apps, nothing to store
+  if (isEmpty(req.body)) return res.status(200).json({ ok: true });
   ingest.ingest(req.body, req.get('x-source'))
-    .then((r) => res.status(201).json({ ok: true, id: r.id, receivedAt: r.receivedAt }))
+    .then(() => res.status(201).json({ ok: true }))
     .catch((e) => {
       log('[ingest] archive write failed:', e.message);
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ ok: false });
     });
 }
-api.post(['/ingest', '/api/ingest', '/data', '/'], handleIngest);
-api.get('/health', (req, res) => res.json({ ok: true, service: 'health-ingest', port: API_PORT, ready }));
-api.get('/', (req, res) => res.json({ service: 'health-ingest', usage: 'POST /ingest with a JSON body (Health Connect export)' }));
+api.post(INGEST_PATHS, handleIngest);
 api.use((err, req, res, next) => {
-  if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON: ' + err.message });
-  res.status(err.status || 500).json({ error: err.message || 'Server error' });
+  if (err.type === 'entity.parse.failed') return res.status(400).json({ ok: false, error: 'invalid json' });
+  if (err.type === 'entity.too.large') return res.status(413).json({ ok: false, error: 'too large' });
+  log('[ingest] error:', err.message);
+  res.status(err.status && err.status < 500 ? err.status : 500).json({ ok: false });
 });
 
 // ---------- web server (port 8322) ----------
@@ -70,7 +96,7 @@ web.use((err, req, res, next) => {
 
 // the ingest endpoint must accept data from the first second, even while the
 // database is still starting (records are archived and processed later)
-api.listen(API_PORT, () => log(`[api] ingest endpoint running on port ${API_PORT}`));
+api.listen(API_PORT, () => log(`[api] ingest endpoint running on port ${API_PORT}${INGEST_TOKEN ? ' (token required)' : ''}`));
 web.listen(WEB_PORT, () => log(`[web] web interface running on port ${WEB_PORT}`));
 
 async function start() {

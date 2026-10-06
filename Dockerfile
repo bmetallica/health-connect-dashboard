@@ -22,6 +22,7 @@ ENV DATA_DIR=/data \
 EXPOSE 8321 8322
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:8321/health >/dev/null || exit 1
+  CMD wget -qO- http://127.0.0.1:8322/health >/dev/null \
+   && wget -qO- --header 'Content-Type: application/json' --post-data '[]' http://127.0.0.1:8321/ingest >/dev/null || exit 1
 
 CMD ["node", "server/index.js"]

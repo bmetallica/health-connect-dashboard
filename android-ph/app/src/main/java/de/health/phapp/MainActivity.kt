@@ -190,7 +190,7 @@ fun MainScreen(onSetup: () -> Unit) {
         if (items.isEmpty()) {
             item {
                 Panel(title = "Noch keine Messungen", subtitle = "Erfasse deinen ersten Wert oben über „Messung erfassen“.") {
-                    if (prefs.configured) {
+                    if (prefs.webConfigured) {
                         Text("Bereits gemessene Werte lassen sich im Setup vom Server übernehmen.", color = C.Muted, fontSize = 13.sp)
                         Spacer(Modifier.height(10.dp))
                         OutlinedButton(onClick = onSetup, shape = RoundedCornerShape(12.dp)) { Text("Zum Setup", color = C.Text2) }
@@ -302,10 +302,10 @@ fun MainScreen(onSetup: () -> Unit) {
                     store.delete(it.id)
                     sheet = false
                     reload()
-                    if (it.synced && prefs.configured) scope.launch {
+                    if (it.synced && prefs.webConfigured) scope.launch {
                         val ok = runCatching { Server.deleteRemote(prefs, it.time) }.getOrDefault(false)
-                        Toast.makeText(ctx, if (ok) "Gelöscht, auch auf dem Server" else "Auf dem Handy gelöscht. Auf dem Server bitte im Webinterface löschen.", Toast.LENGTH_LONG).show()
-                    } else Toast.makeText(ctx, "Gelöscht", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(ctx, if (ok) "Gelöscht, auch auf dem Server" else "Auf dem Handy gelöscht. Server nicht erreichbar (nur im Heimnetz) – dort bitte im Webinterface löschen.", Toast.LENGTH_LONG).show()
+                    } else Toast.makeText(ctx, if (it.synced) "Auf dem Handy gelöscht. Auf dem Server bitte im Webinterface löschen." else "Gelöscht", Toast.LENGTH_LONG).show()
                 }
             },
         )

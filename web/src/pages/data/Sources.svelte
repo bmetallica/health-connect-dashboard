@@ -60,7 +60,7 @@
           </div>
         {/each}
       </div>
-      <p class="tiny muted" style="margin-top:12px">Ingest-Endpunkt: <span class="mono">http://&lt;server&gt;:8321/ingest</span> (POST, JSON). Optionaler Header <span class="mono">X-Source</span> zur Kennzeichnung des Senders.</p>
+      <p class="tiny muted" style="margin-top:12px">Ingest-Endpunkt: <span class="mono">http://&lt;server&gt;:8321/ingest</span> (nur POST, JSON) – empfohlen per Reverse Proxy mit HTTPS freigeben, das Webinterface (Port 8322) bleibt im Heimnetz. Optionale Header: <span class="mono">X-Source</span> (Sender), <span class="mono">X-Ingest-Token</span> (wenn <span class="mono">INGEST_TOKEN</span> gesetzt ist).</p>
     </Card>
 
     <Card title="HC Bridge – Android-App" subtitle="Liest Health Connect direkt aus und ersetzt Tasker (optional)" icon="📱" accent="#4ade80">
@@ -69,7 +69,7 @@
         <a class="btn primary" style="margin-top:10px" href={url('/app/download')}><Icon name="download" size={16} /> APK herunterladen</a>
         <ol class="small muted steps">
           <li>APK auf dem Handy öffnen, Installation aus dieser Quelle erlauben.</li>
-          <li>In der App Server-Adresse eintragen und Health-Connect-Berechtigungen erteilen.</li>
+          <li>In der App die Ingest-Adresse eintragen und Health-Connect-Berechtigungen erteilen.</li>
           <li>Einrichtungsassistent für die Samsung-Akkueinstellungen durchgehen.</li>
           <li>Ein paar Tage parallel zu Tasker laufen lassen, dann Tasker-Profil deaktivieren.</li>
         </ol>
@@ -84,8 +84,9 @@
         <a class="btn primary" style="margin-top:10px" href={url('/app/ph/download')}><Icon name="download" size={16} /> APK herunterladen</a>
         <ol class="small muted steps">
           <li>APK auf dem Handy öffnen, Installation aus dieser Quelle erlauben.</li>
-          <li>Im Setup (Zahnrad) Server-Adresse eintragen und „Verbindung testen“.</li>
-          <li>Optional: Zielbereich übernehmen und bisherige Messungen vom Server importieren.</li>
+          <li>Im Setup (Zahnrad) die Ingest-Adresse eintragen (z. B. per Reverse Proxy <span class="mono">https://…/ingest</span>) und testen.</li>
+          <li>Dazu die Adresse dieses Webinterface im Heimnetz eintragen (für Import, Zielbereich, Löschen).</li>
+          <li>Zielbereich übernehmen und bisherige Messungen vom Server importieren.</li>
           <li>Werte sendet die App als „pH-App“ – die bisherige pH-App kann danach weg.</li>
         </ol>
       {:else}

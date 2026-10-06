@@ -62,14 +62,46 @@ cp .env.example .env        # Passwörter anpassen!
 docker compose up -d --build
 ```
 
-| Port | Dienst |
-|---|---|
-| `8321` | Ingest-Endpunkt: nimmt JSON per `POST /ingest` entgegen |
-| `8322` | Webinterface |
+| Port | Dienst | Erreichbarkeit |
+|---|---|---|
+| `8321` | Ingest: nimmt Daten per `POST /ingest` entgegen | darf per Reverse Proxy ins Internet |
+| `8322` | Webinterface und API | **nur im Heimnetz** |
 
-Alle Daten liegen unter `./data/`: `mariadb/` für die Datenbank, `raw/` für das Rohdaten-Archiv und `app/` für die APK-Datei zum Download.
+Alle Daten liegen unter `./data/`: `mariadb/` für die Datenbank, `raw/` für das Rohdaten-Archiv und `app/` für die APK-Dateien zum Download.
 
-> **Wichtig:** Die App hat **keine Anmeldung**. Betreibe sie nur im Heimnetz, über VPN oder hinter einem Reverse Proxy mit Authentifizierung. Gesundheitsdaten gehören nicht ungeschützt ins Internet.
+## Empfohlener Betrieb
+
+```
+ unterwegs / Handy ── HTTPS ──► Reverse Proxy ──► :8321  Ingest   (nur POST, gibt nichts heraus)
+ Heimnetz ─────────── HTTP ───────────────────────► :8322  Webinterface (IP oder DNS mit Port)
+```
+
+- **Nur der Ingest-Port 8321 wird freigegeben**, per Reverse Proxy mit HTTPS, z. B. `https://health.example.de/ingest`. So kommen Daten auch unterwegs an. Über diesen Port geht nichts nach außen:
+  - Er nimmt ausschließlich `POST` auf `/ingest` an (dazu `/`, `/api/ingest` und `/data`).
+  - Er antwortet nur mit `{"ok":true}` oder `{"ok":false}`.
+  - Jede andere Anfrage, auch `GET`, endet in einem leeren `404`.
+  - Ein leeres `[]` ist ein Verbindungstest und wird nicht gespeichert.
+- **Das Webinterface auf Port 8322 bleibt im Heimnetz.** Du erreichst es über IP oder DNS-Namen mit Portnummer, z. B. `http://192.168.1.10:8322`. Es hat **keine Anmeldung** und darf deshalb nicht ins Internet. Von unterwegs geht es nur über VPN.
+- **Zugangstoken setzen** (empfohlen, sobald der Ingest-Port öffentlich ist). Ohne Token kann jeder, der die Adresse kennt, Daten einschleusen. Das Token steht als `INGEST_TOKEN` in der `.env`. Die Sender schicken es als Header `X-Ingest-Token: <token>`, alternativ als `Authorization: Bearer <token>` oder als `?token=<token>` an der URL. Beide Apps haben dafür ein eigenes Feld. Bei Tasker trägst du es als Header ein.
+
+Beispiel für nginx (nur `POST /ingest` wird durchgereicht):
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name health.example.de;
+    # ssl_certificate ... / ssl_certificate_key ...
+
+    client_max_body_size 50m;
+
+    location = /ingest {
+        limit_except POST { deny all; }
+        proxy_pass http://192.168.1.10:8321/ingest;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+    location / { return 404; }
+}
+```
 
 ## Daten senden
 
@@ -88,13 +120,13 @@ Unterstützte Typen: `HeartRateRecord`, `RestingHeartRateRecord`, `HeartRateVari
 
 Unbekannte Typen gehen nicht verloren. Sie werden roh gespeichert.
 
-Der optionale Header `X-Source` kennzeichnet den Absender, z. B. `tasker`. Die Absender erscheinen unter *Daten → Datenquellen*. Mit gzip komprimierte Sendungen (`Content-Encoding: gzip`) werden ebenfalls angenommen.
+Gesendet wird an die Ingest-Adresse, also `https://<dein-proxy>/ingest` oder im Heimnetz `http://<server>:8321/ingest`. Der optionale Header `X-Source` kennzeichnet den Absender, z. B. `tasker`. Die Absender erscheinen unter *Daten → Datenquellen*. Mit gzip komprimierte Sendungen (`Content-Encoding: gzip`) werden ebenfalls angenommen.
 
 ### pH-Werte
 
 ```bash
-curl -X POST http://<server>:8321/ingest \
-  -H 'Content-Type: application/json' -H 'X-Source: ph-app' \
+curl -X POST https://health.example.de/ingest \
+  -H 'Content-Type: application/json' -H 'X-Source: ph-app' -H 'X-Ingest-Token: <token>' \
   -d '{"date":"2026-09-04","time":"19:39:43","timestamp":1788543583913,"phValue":5.7}'
 ```
 
@@ -106,6 +138,7 @@ Unter `android/` liegt eine kleine Android-App. Sie liest Health Connect direkt 
 - Hält jede Sendung in einer ausfallsicheren Warteschlange und löscht sie erst, wenn der Server sie angenommen hat
 - Läuft im Hintergrund über WorkManager und bringt einen Assistenten für die Akku-Einstellungen mit (getestet auf Samsung)
 - Datentypen und Quellen sind einzeln wählbar, dazu ein Protokoll
+- Sendet an die Ingest-Adresse, z. B. `https://health.example.de/ingest`, auf Wunsch mit Zugangstoken
 
 Voraussetzung: Android 14 oder neuer.
 
@@ -143,7 +176,10 @@ Unter `android-ph/` liegt eine zweite App zur manuellen Erfassung von pH-Werten 
 - **Eigene Zifferntastatur ohne Komma-Fehler:** Es gibt genau eine Komma-Taste und höchstens zwei Nachkommastellen. Ein vergessenes Komma wird ergänzt, weil es keinen pH über 14 gibt: `68` wird zu 6,8, `675` zu 6,75. Dazu Feinjustierung mit ±0,1 sowie frei wählbares Datum und frei wählbare Uhrzeit für Nachträge.
 - **Werte bleiben auch auf dem Handy**, mit Verlauf (Zielbereich, Punkte nach Status eingefärbt), Werteverteilung, Kennzahlen und Messliste. Werte lassen sich bearbeiten und löschen.
 - **Offline-fähig:** Neue Werte werden im Hintergrund gesendet, sobald der Server erreichbar ist (WorkManager).
-- **Eigenes Setup-Menü:** Server-Adresse und Ports mit Verbindungstest, Zielbereich (auch aus dem Webinterface übernehmbar), Import aller bisherigen Messungen vom Server.
+- **Eigenes Setup-Menü** mit zwei getrennten Adressen:
+  - **Datenempfang:** die Ingest-Adresse, z. B. `https://health.example.de/ingest`, und optional das Token. Darüber werden Messungen gesendet, auch unterwegs.
+  - **Webinterface:** z. B. `http://192.168.1.10:8322`, nur im Heimnetz. Es wird nur gebraucht, um den Zielbereich zu übernehmen, bisherige Messungen zu importieren und Werte auf dem Server zu löschen.
+  - Beide Adressen haben einen eigenen Verbindungstest.
 
 Gesendet wird im oben beschriebenen pH-Format mit `X-Source: ph-app`. Voraussetzung: Android 8 oder neuer.
 

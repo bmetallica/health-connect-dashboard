@@ -31,6 +31,7 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
+      INGEST_TOKEN: ${INGEST_TOKEN:-}   # optional: Zugangstoken für den Ingest-Port
       TZ: Europe/Berlin
     ports:
       - "8321:8321"   # Ingest-Endpunkt (JSON entgegennehmen)

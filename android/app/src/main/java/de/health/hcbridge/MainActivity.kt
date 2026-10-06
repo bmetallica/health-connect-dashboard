@@ -144,25 +144,41 @@ fun App() {
         // ---------- setup ----------
         Section("Einrichtung") {
             var url by remember { mutableStateOf(prefs.serverUrl) }
+            var token by remember { mutableStateOf(prefs.ingestToken) }
             var test by remember { mutableStateOf("") }
             OutlinedTextField(
                 value = url, onValueChange = { url = it }, label = { Text("Server-Adresse") },
-                placeholder = { Text("http://192.168.x.x:8321/ingest") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("https://health.example.de/ingest") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
             )
+            OutlinedTextField(
+                value = token, onValueChange = { token = it }, label = { Text("Zugangstoken (optional)") },
+                singleLine = true, modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+            )
+            Text("Empfohlen: Ingest-Port 8321 per Reverse Proxy mit HTTPS. Im Heimnetz geht auch http://<IP>:8321/ingest.", color = Muted, fontSize = 12.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { prefs.serverUrl = url; Scheduler.apply(ctx); tick++ }) { Text("Speichern") }
+                Button(onClick = { prefs.serverUrl = url; prefs.ingestToken = token; Scheduler.apply(ctx); tick++ }) { Text("Speichern") }
                 OutlinedButton(onClick = {
                     test = "Teste …"
                     scope.launch {
                         test = withContext(Dispatchers.IO) {
                             try {
-                                val health = url.trim().replace(Regex("/(ingest|api/ingest|data)?/?$"), "") + "/health"
-                                val c = URL(health).openConnection() as HttpURLConnection
+                                // empty payload: accepted by the server, nothing is stored
+                                val c = URL(url.trim()).openConnection() as HttpURLConnection
+                                c.requestMethod = "POST"; c.doOutput = true
                                 c.connectTimeout = 8000; c.readTimeout = 8000
+                                c.setRequestProperty("Content-Type", "application/json")
+                                if (token.isNotBlank()) c.setRequestProperty("X-Ingest-Token", token.trim())
+                                c.outputStream.use { it.write("[]".toByteArray()) }
                                 val code = c.responseCode
                                 c.disconnect()
-                                if (code == 200) "✓ Server erreichbar" else "Server antwortet mit HTTP $code"
+                                when (code) {
+                                    in 200..299 -> "✓ Server erreichbar"
+                                    401 -> "✕ Token fehlt oder ist falsch"
+                                    404 -> "✕ Adresse falsch (HTTP 404) – endet sie auf /ingest?"
+                                    else -> "Server antwortet mit HTTP $code"
+                                }
                             } catch (e: Exception) { "✕ Nicht erreichbar: ${e.message}" }
                         }
                     }
